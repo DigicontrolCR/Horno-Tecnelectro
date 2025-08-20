@@ -1,0 +1,57 @@
+                                                              BITACORA PROYECTO ESP32 HORNO CONTROLADO
+
+								7/05/3024
+
+- Se solda las bases del modulo MAX318.
+- El codigo que muestra la temperatura en el moniter serie, se corre y funciona correctamente
+- Se procede a unir codigo que envie las notificaciones a usuario desde el ESP32 con el codigo que lee la temperatura, PEDIENTE DE REALIZAR PRUEBAS!
+
+ASPECTOS QUE FALTAN.
+
+- Una vez se determnie que el codigo de notificaciones y temperatura funciona correctamente, proceder a trabajarlo en la nube de Arduino para enviar datos
+y comandos del movil a arduino 
+- Falta anexar al circuito fisico el modulo ULN para las salidas y entradas analogicas
+- Falta hacer codigo para salidas y entradas
+- Definir interfaz para conectar botones (tentativa un optoacople)
+- Realizar codigo para entradas (botones) y asignar a pines salidas normales (Luces y bocina)  
+
+							 	14/05/2024
+
+Se determnie que el codigo de notificaciones y temperatura funciona correctamente, proceder a trabajarlo en la nube de Arduino para enviar datos, esto 
+se hace con exito. Falta enviar comandos de paro e inicio. Tomar en cuenta que no se puede trabajar en la iCluod de arduino en el IDE al mismo tiempo
+dado que, se crea una interrrupcion en los puertos comunes. Hay fallas en las lecturas de temperatura (Posiblemente terminales de termopar).- Falta anexar al circuito fisico el modulo ULN para las salidas y entradas analogicas
+
+- Falta hacer codigo para salidas y entradas
+- Definir interfaz para conectar botones (tentativa un optoacople)
+- Realizar codigo para entradas (botones) y asignar a pines salidas normales (Luces y bocina)  
+
+								22/05/2024
+
+- Hacer el PID 
+- Definir interfaz para conectar botones (tentativa un optoacople)
+- Incorporar botones y luces pilotos, tanto al programa como fisicamente.
+- Anexar los botones de start y stop al dashboard para visualizar y enviar comandos desde el celular.
+- Cablear modulo de reles
+- Incoporar fisicamente y al programa el driver ULN
+
+								30/05/2024
+Se tienen problemas de comunicacion con la nube de arduino, es decir, visualizar la temperatura en tiempo real y enviar los comandos de encendido y apagado 
+Este problema surge al eliminar lineas de codigo que genera automaticamente la nube de arduino, este codigo permite conectarse a la nube y ver las varibles
+que uno asigne y demas. Es importante destacar que NO se puede eliminar ninguna linea y se debe separar bien el codigo de las notificaciones y el de arduino IoT
+
+								7/06/2024
+
+Principio de funcionamiento: El microcontrolador ESP32 es el encargado de realizar la transmisión de información de forma bidireccional, 
+el ESP32 envía los datos de temperatura a la nube de Arduino desde la cual se programa y se crea el entorno gráfico que se visualiza en el celular, 
+esto para el caso de monitoreo. Para el caso de control, de la misma nube de Arduino se definen variables que pueden ser manipuladas desde el celular, 
+la aplicación utilizada para monitorear y controlar es IoT Remote de arduino, disponible para Android y iOS. 
+Por otro lado, el envío de notificaciones se hace por medio del módulo  WiFi del ESP32 y programación, utilizando la aplicación de WhatsApp. 
+La mayor ventaja de este tipo de proyecto es su bajo costo, por ejemplo el ESP32 tiene un valor aproximadamente 40 dólares y los otros componentes 
+no exceden este valor. En cuanto a la fiabilidad, la única desventaja sería las interferencias electromagnéticas o velocidad del internet, dado que, 
+todos los datos se reciben y se envían vía WiFi y estos factores podrían afectar. La nube de arduino es confiable, puesto que, es especial para este 
+tipo de aplicaciones y lleva un buen tiempo.
+
+
+							6_08_2024
+Es importante tener en cuenta que una vez conectado el dispositivo, Alexa lo guarda, aun asi apagandola. Por lo que no se le puede decir que busque un
+dispositivo nuevo.

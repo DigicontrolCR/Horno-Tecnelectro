@@ -1,0 +1,12 @@
+El modo de descarga se detectó correctamente, pero no se obtiene respuesta de sincronización: la ruta TX serial parece estar inactiva.
+El chip se reinicia correctamente en el modo de descarga y envía datos a la computadora host, pero no recibe ninguna respuesta enviada por esptool.
+ Esto implica que hay un problema con la línea TX que va desde el host hasta el dispositivo ESP. Vuelva a verificar su placa o circuito de placa de
+ pruebas para detectar cualquier problema.
+
+Formatea la SD para que pueda trabajar con FAST32
+
+Link para problemas relacionados con NEXTION y ESP32 
+https://docs.espressif.com/projects/esptool/en/latest/esp32/troubleshooting.html#writing-to-flash-fails-part-way-through
+
+Secret key para Arduino iCloud
+ChgGH?#cWd1e8BJgiW3ktW5U3
