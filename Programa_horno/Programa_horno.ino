@@ -34,10 +34,10 @@ double Kp = 2, Ki = 5, Kd = 1;  // parametros de ajustes iniciales
 char tempHMI[6];
 
 
-int estado_EMO = LOW;
-int estado_lsw = LOW;
-int estado_tempFalla = LOW;
-int estado_start = LOW;
+int estado_EMO = HIGH;
+int estado_lsw = HIGH;
+int estado_tempFalla = HIGH;
+int estado_start = HIGH;
 
 
 char corrienteHMI[6];
@@ -136,8 +136,12 @@ void setup() {
   pinMode(14, INPUT);
   pinMode(37, INPUT);
   pinMode(38, INPUT);
-  digitalWrite(pilotoFalla, HIGH);
+  
   pinMode(pausePin, INPUT);
+
+  digitalWrite(pilotoFalla, HIGH);
+  digitalWrite(pilotoStart, LOW);
+  digitalWrite(turbina, LOW);
 
   // 4. PID
   Input = temperatura3;
@@ -180,7 +184,7 @@ void loop() {
   lecturaEntradas();
   graficas();
   //onIndicationStarChange();
-  //encender();
+  encender();
   //notificaciones();
 }
 
@@ -338,7 +342,7 @@ void lecturaEntradas() {
     mensaje[0] = '\0';
 
     if (estado_EMO == HIGH || estado_lsw == HIGH || estado_tempFalla == HIGH) {
-        estado_start = LOW;
+        //estado_start = LOW;
 
         if(estado_EMO == LOW){
           snprintf(mensaje, sizeof(mensaje),
@@ -425,9 +429,11 @@ void onIndicationStarChange() {
 //Lógica del fallo de temperatura del controlador independiente
 // Maneja las fallas
 void onIndicationFaultChange() {
+  /*
   indication_fault = true;
   indication_star = false;
   bandera = 0;
+  
   
   switch (estadotempFalla) {
     case 1:  // Temperatura máxima
@@ -443,6 +449,7 @@ void onIndicationFaultChange() {
       mensajesHMI("");
       return;  // Salir si no hay falla reconocida
   }
+  
 
   // Lógica común para todas las fallas
   digitalWrite(turbina, HIGH);
@@ -451,16 +458,24 @@ void onIndicationFaultChange() {
   delay(500);
   digitalWrite(pilotoFalla, HIGH);
   delay(500);
+  */
 }
 
 
 void encender() {
-  if (start == LOW) {
+  estado_start = digitalRead(PIN_START);
+  if (estado_start == LOW) {
+    Serial.println("START PRECIONADO");
+  //if (start == LOW) {
     indication_star = true;
     digitalWrite(pilotoStart, LOW);
     digitalWrite(turbina, LOW);
     bandera = 1;
-  } else if (stop == HIGH) {
+  } else if (estado_start == HIGH) {
+    digitalWrite(pilotoStart, HIGH);
+    digitalWrite(turbina, HIGH);
+  }
+   else if (stop == HIGH) {
     //  onStopChange();
   }
 }
@@ -544,6 +559,7 @@ void PID() {
   analogWrite(PIN_OUTPUT, Output);
 }
 
+/*
 void onStartChange() {
   indication_star = true;
   digitalWrite(pilotoStart, LOW);
@@ -558,3 +574,4 @@ void onStopChange() {
   indication_star = false;
   bandera = 0;
 }
+*/
