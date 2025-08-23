@@ -7,7 +7,7 @@
 
   The following variables are automatically generated and updated when changes are made to the Thing
 
-  float temperatura4;
+  float temperatura_grafica;
   bool indication_fault;
   bool indication_start;
   bool start;
@@ -19,6 +19,70 @@
 */
 
 #include "thingProperties.h"
+#include "Adafruit_MAX31855.h"
+#include <Nextion.h>
+
+
+// Parametros para la funcion thermocouple(MAXCLK, MAXCS, MAXDO);
+#define MAXDO   19
+#define MAXCLK  18
+#define MAXCS   5
+
+// Definicion de pines
+#define PIN_EMO 14
+#define PIN_LSW 37
+#define PIN_TEMPFALLA 38
+#define PIN_START 13
+
+//#define PIN_OUTPUT 25
+#define PIN_PILOTOSTART 27
+#define PIN_PILOTOFALLA 12
+#define PIN_TURBINA 21
+
+#define PIN_RX 16
+#define PIN_TX 17
+
+//Constantes
+const unsigned long lectura_temperatura_intervalo = 1000;
+const unsigned long lectura_entradas_intervalo = 100;
+
+
+
+//Variables
+char tempHMI[6];
+int estado_EMO = HIGH;
+int estado_lsw = HIGH;
+int estado_tempFalla = HIGH;
+int estado_start = HIGH;
+
+
+// Configuración HMI Nextion
+HardwareSerial nextionSerial(2);  // Usar UART2 en ESP32 (pines 16-TX, 17-RX)
+
+
+Adafruit_MAX31855 thermocouple(MAXCLK, MAXCS, MAXDO);
+
+//Configuracion de cada atributo de la HMI
+//Se indica la pagina, id, nombre del atributo
+NexPage p0 = NexPage(0, 0, "page0");  
+NexPage p1 = NexPage(1, 0, "page1");
+
+NexText NexTemperatura = NexText(0, 3, "t0");
+
+NexNumber n0 = NexNumber(0, 1, "n0"); 
+NexNumber n1 = NexNumber(0, 12, "n1");
+NexNumber n2 = NexNumber(0, 13, "n2");
+
+NexScrolltext NexMensajes = NexScrolltext(0, 5, "g0");
+
+NexText t4 = NexText(0, 7, "t4");
+NexWaveform temperatura_grafica_HMI = NexWaveform(1, 1, "s0");
+
+NexTouch *nex_listen_list[] = {
+  &n0,
+  NULL
+};
+
 
 void setup() {
   // Initialize serial and wait for port to open:
@@ -41,16 +105,50 @@ void setup() {
  */
   setDebugMessageLevel(2);
   ArduinoCloud.printDebugInfo();
+
+  // 1. Hardware crítico
+  analogReadResolution(12);
+  nextionSerial.begin(9600, SERIAL_8N1, PIN_RX, PIN_TX);
+  nexInit();
+
+  // 2. Termopar
+  if (!thermocouple.begin()) {
+    Serial.println("ERROR Modulo Temperatura");
+    mensajesHMI("ERROR! Modulo Temperatura");
+  } else {
+    Serial.println("Termopar OK");
+  }
+
+  // 3. Configuración de pines
+  pinMode(PIN_PILOTOSTART, OUTPUT);
+  pinMode(PIN_PILOTOFALLA, OUTPUT);
+  pinMode(PIN_TURBINA, OUTPUT);
+  pinMode(PIN_START, INPUT);
+  pinMode(PIN_EMO, INPUT);
+  pinMode(PIN_LSW, INPUT);
+  pinMode(PIN_TEMPFALLA, INPUT);
+  
+
+  digitalWrite(PIN_PILOTOFALLA, HIGH);
+  digitalWrite(PIN_PILOTOSTART, HIGH);
+  digitalWrite(PIN_TURBINA, HIGH);
+
+
 }
+
 
 void loop() {
   ArduinoCloud.update();
-  // Your code here 
-  
-  
+  actualTemperatura();
+  //Corriente();
+  //acciones();
+  //erroresTemperatura();
+  lecturaEntradas();
+  graficas();
+  //onIndicationStarChange();
+  encender();
+  //notificaciones();
 }
-
-
 
 /*
   Since Start is READ_WRITE variable, onStartChange() is
@@ -67,4 +165,134 @@ void onStartChange()  {
 void onStopChange()  {
   // Add your code here to act upon Stop change
 }
+
+void actualTemperatura(){
+  static unsigned long lastReadTime = 0;
+  unsigned long currentTime = millis();
+  
+  // Leer cada segundo
+  if (currentTime - lastReadTime >= lectura_temperatura_intervalo) {
+    lastReadTime = currentTime;
+    
+    // Leer temperatura en Celsius
+    double tempC = thermocouple.readCelsius();
+    
+    // Verificar si la lectura es válida
+    if (isnan(tempC)) {
+      Serial.println("Error en la lectura del termopar");
+      mensajesHMI("Error termopar");
+      //verificarErrores();
+    } else {
+      // Mostrar temperatura en consola
+      Serial.print("Temperatura: ");
+      Serial.print(tempC);
+      Serial.println(" °C");
+      
+      // Mostrar temperatura en HMI
+      //mensajesHMI("Termopar OK");
+      mostrarTemperaturaHMI(tempC);
+    }
+  }
+}
+
+// Función para mostrar temperatura (t0) en HMI
+void mostrarTemperaturaHMI(double temperatura) {
+  // Formatear el valor con 1 decimal
+  String tempStr = String(temperatura, 1);
+  tempStr.toCharArray(tempHMI, 6);
+  NexTemperatura.setText(tempHMI);
+}
+
+// Función para mostrar mensajes en el campo de texto principal (g0) del HMI
+void mensajesHMI(String mensaje) {
+  char bufferMensaje[50];
+  mensaje.toCharArray(bufferMensaje, 50);
+  NexMensajes.setText(bufferMensaje);
+}
+
+//Solamente lee el estado de las entrdas
+void lecturaEntradas() {
+  static unsigned long lastReadTime = 0;
+  unsigned long currentTime = millis();
+
+  char mensaje[100];
+
+  // Leer cada segundo
+  if (currentTime - lastReadTime >= lectura_entradas_intervalo) {
+    lastReadTime = currentTime;
+
+    // Leer entradas
+    estado_EMO = digitalRead(PIN_EMO);
+    estado_lsw = digitalRead(PIN_LSW);
+    estado_tempFalla = digitalRead(PIN_TEMPFALLA);
+    //estado_start     = digitalRead(PIN_START);
+    
+    mensaje[0] = '\0';
+
+    if (estado_EMO == HIGH || estado_lsw == HIGH || estado_tempFalla == HIGH) {
+        //estado_start = LOW;
+
+        if(estado_EMO == LOW){
+          snprintf(mensaje, sizeof(mensaje),
+             "(EMO) Paro de emergencia");
+        }
+
+        if(estado_lsw == LOW){
+          snprintf(mensaje, sizeof(mensaje),
+             "(LSW) Puerta abierta");
+        }
+
+        if(estado_tempFalla == LOW){
+          snprintf(mensaje, sizeof(mensaje),
+             "Fallo de temperatura");
+        }
+
+        // Mostrar en HMI
+        mensajesHMI(mensaje);
+    }
+    
+  }
+}
+
+//se grafican las variables en HMI
+void graficas() {
+  static unsigned long lastReadTime = 0;
+  unsigned long currentTime = millis();
+  
+  // Leer cada segundo
+  if (currentTime - lastReadTime >= lectura_temperatura_intervalo) {
+    lastReadTime = currentTime;
+    
+    // Leer temperatura en Celsius
+    double tempC = thermocouple.readCelsius();
+    
+    // Verificar si la lectura es válida
+    if (isnan(tempC)) {
+      Serial.println("Error en la lectura del termopar");
+      //mensajesHMI("Error termopar");
+      //verificarErrores();
+    } else {
+      temperatura_grafica_HMI.addValue(0, tempC);  //el primer dato indica el canal, el componente permite 4 canales, pero en la programacion el canal 1 sería el 0 en el ESP32
+  
+    }
+
+    ///////////// GRAFICAR LA CORRIENTE /////////////
+
+  }
+}
+
+void encender() {
+  estado_start = digitalRead(PIN_START);
+
+  if (estado_start == LOW) {
+    digitalWrite(PIN_PILOTOSTART, LOW);
+    digitalWrite(PIN_TURBINA, LOW);
+  } else if (estado_start == HIGH) {
+    digitalWrite(PIN_PILOTOSTART, HIGH);
+    digitalWrite(PIN_TURBINA, HIGH);
+  }
+}
+
+
+
 

@@ -12,7 +12,7 @@ const char DEVICE_KEY[]  = SECRET_DEVICE_KEY;    // Secret device password
 void onStartChange();
 void onStopChange();
 
-float temperatura4;
+float temperatura_grafica;
 bool indication_fault;
 bool indication_start;
 bool start;
@@ -22,7 +22,7 @@ void initProperties(){
 
   ArduinoCloud.setBoardId(DEVICE_LOGIN_NAME);
   ArduinoCloud.setSecretDeviceKey(DEVICE_KEY);
-  ArduinoCloud.addProperty(temperatura4, READ, 1 * SECONDS, NULL);
+  ArduinoCloud.addProperty(temperatura_grafica, READ, 1 * SECONDS, NULL);
   ArduinoCloud.addProperty(indication_fault, READ, ON_CHANGE, NULL);
   ArduinoCloud.addProperty(indication_start, READ, ON_CHANGE, NULL);
   ArduinoCloud.addProperty(start, READWRITE, ON_CHANGE, onStartChange);

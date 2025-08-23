@@ -8,7 +8,7 @@
 #include <PID_v1.h>
 #include "thingProperties.h"
 
-// Definición de pines (ajusta según tu conexión)
+// Definición de pines
 #define MAXDO   19
 #define MAXCLK  18
 #define MAXCS   5
@@ -321,7 +321,6 @@ void erroresTemperatura() {
 }
 */
 
-//Solamente lee el estado de las entrdas
 //Solamente lee el estado de las entrdas
 void lecturaEntradas() {
   static unsigned long lastReadTime = 0;
