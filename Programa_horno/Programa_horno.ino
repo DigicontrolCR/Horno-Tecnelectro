@@ -18,6 +18,11 @@
 #define pilotoFalla 12
 #define turbina 21
 
+#define PIN_EMO 14
+#define PIN_LSW 37
+#define PIN_TEMPFALLA 38
+#define PIN_START 13
+
 uint32_t receivedValue = 0;  // Variable para almacenar el valor numérico recibido
 double temperatura = 0;      //temperatura original
 double temperatura2 = 0;
@@ -27,6 +32,12 @@ double Kp = 2, Ki = 5, Kd = 1;  // parametros de ajustes iniciales
 
 
 char tempHMI[6];
+
+
+int estado_EMO = LOW;
+int estado_lsw = LOW;
+int estado_tempFalla = LOW;
+int estado_start = LOW;
 
 
 char corrienteHMI[6];
@@ -307,34 +318,49 @@ void erroresTemperatura() {
 */
 
 //Solamente lee el estado de las entrdas
+//Solamente lee el estado de las entrdas
 void lecturaEntradas() {
   static unsigned long lastReadTime = 0;
   unsigned long currentTime = millis();
+
+  char mensaje[100];
 
   // Leer cada segundo
   if (currentTime - lastReadTime >= lecturaEntradasInterval) {
     lastReadTime = currentTime;
 
     // Leer entradas
-    int start     = digitalRead(13);
-    int EMO       = digitalRead(14);
-    int lsw       = digitalRead(37);
-    int tempFalla = digitalRead(38);
+    estado_EMO       = digitalRead(PIN_EMO);
+    estado_lsw       = digitalRead(PIN_LSW);
+    estado_tempFalla = digitalRead(PIN_TEMPFALLA);
+    estado_start     = digitalRead(PIN_START);
+    
+    mensaje[0] = '\0';
 
-    // Construir mensaje
-    char mensaje[100];
-    snprintf(mensaje, sizeof(mensaje),
-             "START: %s\nEMO: %s\nLSW: %s\nTEMP: %s",
-             start ? "INACT" : "ACT",
-             EMO ? "INACT" : "ACT",
-             lsw ? "INACT" : "ACT",
-             tempFalla ? "INACT" : "ACT");
+    if (estado_EMO == HIGH || estado_lsw == HIGH || estado_tempFalla == HIGH) {
+        estado_start = LOW;
 
-    // Mostrar en HMI
-    mensajesHMI(mensaje);
+        if(estado_EMO == LOW){
+          snprintf(mensaje, sizeof(mensaje),
+             "(EMO) Paro de emergencia activado");
+        }
+
+        if(estado_lsw == LOW){
+          snprintf(mensaje, sizeof(mensaje),
+             "(LSW) Puerta abierta");
+        }
+
+        if(estado_tempFalla == LOW){
+          snprintf(mensaje, sizeof(mensaje),
+             "Fallo de temperatura");
+        }
+
+        // Mostrar en HMI
+        mensajesHMI(mensaje);
+    }
+    
   }
 }
-
 
 //se grafican las variables en HMI
 void graficas() {
