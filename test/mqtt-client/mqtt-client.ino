@@ -1,29 +1,17 @@
 #include <WiFi.h>
 #include <WebSocketsClient.h>
 
-// ===== Configuración =====
 const char* ssid = "DIGICONTROL";
 const char* password = "7012digi19";
-const char* WS_SERVER = "horno-tecnelectro.onrender.com";
-const uint16_t WS_PORT = 80;
+const char* host = "horno-tecnelectro.onrender.com";
+const int port = 80;
 
 WebSocketsClient webSocket;
-unsigned long lastSendTime = 0;
 
 void connectToWiFi() {
-  Serial.println("Conectando a WiFi...");
   WiFi.begin(ssid, password);
-  
-  int attempts = 0;
-  while (WiFi.status() != WL_CONNECTED && attempts < 30) {
-    delay(500);
-    Serial.print(".");
-    attempts++;
-  }
-  
-  if (WiFi.status() == WL_CONNECTED) {
-    Serial.println("\n✅ WiFi conectado");
-  }
+  while (WiFi.status() != WL_CONNECTED) delay(500);
+  Serial.println("✅ WiFi conectado");
 }
 
 void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
@@ -32,10 +20,10 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
       Serial.println("❌ Desconectado");
       break;
     case WStype_CONNECTED:
-      Serial.println("✅ Conectado al broker!");
+      Serial.println("✅ Conectado!");
       break;
     case WStype_TEXT:
-      Serial.print("📩 Recibido: ");
+      Serial.print("📩: ");
       Serial.write(payload, length);
       Serial.println();
       break;
@@ -44,29 +32,24 @@ void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
 
 void setup() {
   Serial.begin(115200);
-  delay(2000);
-  
-  Serial.println("Iniciando cliente MQTT WebSocket...");
   connectToWiFi();
   
-  webSocket.begin(WS_SERVER, WS_PORT, "/");
+  // Usar path /simple para el WebSocket simple
+  webSocket.begin(host, port, "/simple");
   webSocket.onEvent(webSocketEvent);
 }
 
 void loop() {
   webSocket.loop();
   
-  if (millis() - lastSendTime > 5000) {
-    lastSendTime = millis();
+  static unsigned long lastMsg = 0;
+  if (millis() - lastMsg > 5000) {
+    lastMsg = millis();
     
-    if (webSocket.isConnected()) {
-      String msg = "ESP32 - " + String(millis());
-      webSocket.sendTXT(msg);
-      Serial.println("📤 Enviado: " + msg);
-    } else {
-      Serial.println("⚠️  No conectado, intentando reconectar...");
-      webSocket.begin(WS_SERVER, WS_PORT, "/");
-    }
+    // Enviar mensaje simple (ahora funcionará)
+    String message = "ESP32_" + String(millis() / 1000);
+    webSocket.sendTXT(message);
+    Serial.println("📤 Enviado: " + message);
   }
   
   delay(100);
