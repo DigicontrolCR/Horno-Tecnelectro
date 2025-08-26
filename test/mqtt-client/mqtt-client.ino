@@ -1,73 +1,62 @@
 #include <WiFi.h>
-#include <AsyncMqttClient.h>
-#include <Ticker.h>
+#include <WebSocketsClient.h>
+#include <ArduinoJson.h>
 
 // ===== Configuración Wi-Fi =====
 const char* ssid = "DIGICONTROL";
 const char* password = "7012digi19";
 
-// ===== Configuración MQTT =====
-#define MQTT_HOST "horno-tecnelectro.onrender.com"
-#define MQTT_PORT 80   // Render expone WebSockets en puerto 80
+// ===== Configuración WebSocket =====
+const char* MQTT_WS_HOST = "horno-tecnelectro.onrender.com";
+const uint16_t MQTT_WS_PORT = 80; // Puerto WS de Render
+const char* MQTT_TOPIC_SUB1 = "node/out";
+const char* MQTT_TOPIC_SUB2 = "esp32/out";
+const char* MQTT_TOPIC_PUB = "esp32/out";
 
-AsyncMqttClient mqttClient;
-Ticker mqttReconnectTimer;
-Ticker wifiReconnectTimer;
-Ticker publishTimer;  // Para enviar mensajes periódicos
+WebSocketsClient webSocket;
+unsigned long lastPublish = 0;
 
 // ===== Funciones =====
-void connectToWifi() {
+void connectToWiFi() {
   Serial.println("Conectando a Wi-Fi...");
   WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\n✅ Wi-Fi conectado");
 }
 
-void connectToMqtt() {
-  if (!mqttClient.connected()) {
-    Serial.println("Intentando conectar al broker MQTT...");
-    mqttClient.connect();
+// Callback al recibir mensajes del WebSocket
+void webSocketEvent(WStype_t type, uint8_t * payload, size_t length) {
+  switch(type) {
+    case WStype_DISCONNECTED:
+      Serial.println("⚠️ WebSocket desconectado");
+      break;
+    case WStype_CONNECTED:
+      Serial.println("✅ Conectado al broker WebSocket");
+      // Suscribirse a tópicos
+      webSocket.sendTXT("{\"type\":\"subscribe\",\"topic\":\"" + String(MQTT_TOPIC_SUB1) + "\"}");
+      webSocket.sendTXT("{\"type\":\"subscribe\",\"topic\":\"" + String(MQTT_TOPIC_SUB2) + "\"}");
+      break;
+    case WStype_TEXT:
+      Serial.print("📩 Mensaje recibido: ");
+      Serial.write(payload, length);
+      Serial.println();
+      break;
+    default:
+      break;
   }
 }
 
-// Callback para eventos Wi-Fi
-void WiFiEvent(WiFiEvent_t event) {
-  switch(event) {
-    case ARDUINO_EVENT_WIFI_STA_GOT_IP:
-      Serial.println("✅ Wi-Fi conectado");
-      connectToMqtt();
-      break;
-    case ARDUINO_EVENT_WIFI_STA_DISCONNECTED:
-      Serial.println("⚠️ Wi-Fi desconectado, reconectando...");
-      wifiReconnectTimer.once(2, connectToWifi);
-      break;
-  }
-}
-
-// Callback al conectar MQTT
-void onMqttConnect(bool sessionPresent) {
-  Serial.println("✅ Conectado al broker MQTT (WebSocket)!");
-  
-  // Suscribirse a ambos tópicos
-  mqttClient.subscribe("node/out", 1);
-  mqttClient.subscribe("esp32/out", 1);
-
-  // Iniciar publicación periódica
-  publishTimer.attach(5, []() {
-    mqttClient.publish("esp32/out", 1, false, "Hola desde ESP32!");
-    Serial.println("📤 Mensaje publicado en esp32/out");
-  });
-}
-
-// Callback al recibir mensaje MQTT
-void onMqttMessage(char* topic, char* payload,
-                   AsyncMqttClientMessageProperties properties,
-                   size_t len, size_t index, size_t total) {
-  Serial.print("📩 Mensaje en [");
+// Publicar mensaje en formato JSON
+void publishMessage(const char* topic, const char* msg) {
+  String json = "{\"type\":\"publish\",\"topic\":\"" + String(topic) + "\",\"payload\":\"" + String(msg) + "\"}";
+  webSocket.sendTXT(json);
+  Serial.print("📤 Publicado en ");
   Serial.print(topic);
-  Serial.print("]: ");
-  for (size_t i = 0; i < len; i++) {
-    Serial.print((char)payload[i]);
-  }
-  Serial.println();
+  Serial.print(": ");
+  Serial.println(msg);
 }
 
 // ===== Setup =====
@@ -75,19 +64,19 @@ void setup() {
   Serial.begin(115200);
   delay(1000);
 
-  WiFi.onEvent(WiFiEvent);              // Registrar eventos Wi-Fi
-  mqttClient.onConnect(onMqttConnect);  // Registrar eventos MQTT
-  mqttClient.onMessage(onMqttMessage);
+  connectToWiFi();
 
-  mqttClient.setServer(MQTT_HOST, MQTT_PORT);
-  mqttClient.setClientId("ESP32Client");
-  mqttClient.setWill("esp32/status", 1, true, "offline");  // Mensaje de último recurso
-  mqttClient.setKeepAlive(15);
-
-  connectToWifi();
+  webSocket.begin(MQTT_WS_HOST, MQTT_WS_PORT, "/"); // Path por defecto "/"
+  webSocket.onEvent(webSocketEvent);
 }
 
-// ===== Loop vacío =====
+// ===== Loop =====
 void loop() {
-  // Nada que hacer aquí: AsyncMqttClient maneja todo con callbacks y timers
+  webSocket.loop();
+
+  // Publicar cada 5 segundos
+  if (millis() - lastPublish > 5000) {
+    lastPublish = millis();
+    publishMessage(MQTT_TOPIC_PUB, "Hola desde ESP32 WebSocket!");
+  }
 }
