@@ -7,7 +7,7 @@ const PORT = process.env.PORT || 3000;
 // Crear servidor HTTP con respuesta básica
 const server = http.createServer((req, res) => {
   res.writeHead(200, { 'Content-Type': 'text/plain' });
-  res.end('🚀 Broker MQTT (WebSocket) activo\n');
+  res.end('Broker MQTT (WebSocket) activo\n');
 });
 
 // Enlazar WebSocket al broker MQTT
