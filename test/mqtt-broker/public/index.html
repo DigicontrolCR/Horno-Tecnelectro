@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Monitor MQTT Broker</title>
+  <style>
+    body { font-family: Arial, sans-serif; background: #111; color: #eee; padding: 20px; }
+    h1 { color: #0f0; }
+    #logs { white-space: pre-wrap; border: 1px solid #333; padding: 10px; background: #222; height: 400px; overflow-y: scroll; }
+  </style>
+</head>
+<body>
+  <h1>🚀 Broker MQTT Monitor</h1>
+  <div id="logs"></div>
+
+  <script>
+    const logDiv = document.getElementById('logs');
+    const evtSource = new EventSource('/events');
+    evtSource.onmessage = (event) => {
+      logDiv.innerText += event.data + "\n";
+      logDiv.scrollTop = logDiv.scrollHeight; // auto scroll
+    };
+  </script>
+</body>
+</html>
