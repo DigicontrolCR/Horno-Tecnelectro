@@ -1,29 +1,26 @@
 const aedes = require('aedes')();
-const net = require('net');
+const http = require('http');
+const ws = require('websocket-stream');
 
-// 1883 es el puerto estándar MQTT
-const PORT = process.env.PORT || 1883;
+const PORT = process.env.PORT || 3000;
 
-// Crear servidor TCP que manejará las conexiones MQTT
-const server = net.createServer(aedes.handle);
+// Crear servidor HTTP
+const server = http.createServer();
 
-/*
-server.listen(PORT, function () {
-  console.log('🚀 Broker MQTT corriendo en puerto', PORT);
-});
-*/
+// Enlazar WebSocket al broker
+ws.createServer({ server }, aedes.handle);
 
 server.listen(PORT, '0.0.0.0', () => {
-  console.log('🚀 Broker MQTT corriendo en puerto', PORT);
+  console.log(`🚀 Broker MQTT (WebSocket) escuchando en puerto ${PORT}`);
 });
 
-// Logs básicos
+// Logs
 aedes.on('client', (client) => {
   console.log('📡 Cliente conectado:', client ? client.id : 'Desconocido');
 });
 
 aedes.on('publish', (packet, client) => {
   if (client) {
-    console.log(`📩 Mensaje recibido en tópico '${packet.topic}': ${packet.payload.toString()}`);
+    console.log(`📩 Mensaje publicado en '${packet.topic}': ${packet.payload.toString()}`);
   }
 });
