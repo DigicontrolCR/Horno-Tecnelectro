@@ -1,12 +1,19 @@
 const aedes = require('aedes')();
 const net = require('net');
 
-const PORT = 1883; // Puerto estándar MQTT
+// 1883 es el puerto estándar MQTT
+const PORT = process.env.PORT || 1883;
 
 // Crear servidor TCP que manejará las conexiones MQTT
 const server = net.createServer(aedes.handle);
 
+/*
 server.listen(PORT, function () {
+  console.log('🚀 Broker MQTT corriendo en puerto', PORT);
+});
+*/
+
+server.listen(PORT, '0.0.0.0', () => {
   console.log('🚀 Broker MQTT corriendo en puerto', PORT);
 });
 
