@@ -239,7 +239,14 @@ aedes.on('client', (client) => {
 });
 
 // Logs de mensajes publicados
+// Logs de mensajes publicados
 aedes.on('publish', (packet, client) => {
+  // ===== FILTRO: Ignorar mensajes del sistema $SYS/ =====
+  if (packet.topic.startsWith('$SYS/')) {
+    return; // No procesar mensajes del sistema
+  }
+  // ===== FIN DEL FILTRO =====
+  
   if (client) {
     const msg = `📩 Mensaje MQTT en '${packet.topic}' por '${client.id}': ${packet.payload.toString()}`;
     console.log(msg);
