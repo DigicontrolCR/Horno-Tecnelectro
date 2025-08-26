@@ -18,9 +18,12 @@ void connectToWifi() {
 }
 
 void connectToMqtt() {
-  Serial.println("Conectando al broker MQTT por WebSockets...");
-  mqttClient.connect();
+  if (!mqttClient.connected()) {
+    Serial.println("Intentando conectar al broker MQTT...");
+    mqttClient.connect();
+  }
 }
+
 
 void WiFiEvent(WiFiEvent_t event) {
   switch(event) {
@@ -54,15 +57,17 @@ void onMqttMessage(char* topic, char* payload, AsyncMqttClientMessageProperties 
 
 void setup() {
   Serial.begin(115200);
-  WiFi.begin(ssid, password);
-  Serial.println("Intentando conectar a Wi-Fi...");
+  WiFi.onEvent(WiFiEvent);
+  mqttClient.onConnect(onMqttConnect);
+  mqttClient.onMessage(onMqttMessage);
+
+  mqttClient.setServer(MQTT_HOST, MQTT_PORT);
+  mqttClient.setClientId("ESP32Client");
+  mqttClient.setWill("esp32/status", 1, true, "offline");
+  mqttClient.setKeepAlive(15);
+
+  connectToWifi();
 }
 
 void loop() {
-  if(WiFi.status() == WL_CONNECTED){
-    Serial.println("Wi-Fi conectado!");
-  } else {
-    Serial.println("Conectando...");
-  }
-  delay(2000);
 }
