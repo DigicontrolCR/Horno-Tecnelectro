@@ -5,7 +5,11 @@ const ws = require('websocket-stream');
 const PORT = process.env.PORT || 3000;
 
 // Crear servidor HTTP
-const server = http.createServer();
+const server = http.createServer((req, res) => {
+  // Respuesta simple para navegador / health check
+  res.writeHead(200, { 'Content-Type': 'text/plain' });
+  res.end('🚀 Broker MQTT (WebSocket) activo\n');
+});
 
 // Enlazar WebSocket al broker
 ws.createServer({ server }, aedes.handle);
