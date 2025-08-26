@@ -1,7 +1,7 @@
 const aedes = require('aedes')();
 const http = require('http');
 const ws = require('websocket-stream');
-const WebSocket = require('ws'); // ← Añadir esta dependencia
+const WebSocket = require('ws');
 const fs = require('fs');
 const path = require('path');
 
@@ -11,6 +11,18 @@ let clients = []; // conexiones SSE (navegadores escuchando)
 
 // Servidor HTTP
 const server = http.createServer((req, res) => {
+  // Habilitar CORS para todas las rutas
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  
+  // Manejar preflight OPTIONS
+  if (req.method === 'OPTIONS') {
+    res.writeHead(200);
+    res.end();
+    return;
+  }
+  
   if (req.url === '/') {
     // Página HTML
     const filePath = path.join(__dirname, 'public', 'index.html');
@@ -29,6 +41,7 @@ const server = http.createServer((req, res) => {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
       'Connection': 'keep-alive',
+      'Access-Control-Allow-Origin': '*'
     });
     res.write('\n');
     clients.push(res);
@@ -37,16 +50,81 @@ const server = http.createServer((req, res) => {
       clients = clients.filter(client => client !== res);
     });
   } else if (req.url === '/status') {
-    // Endpoint de estado para verificar que el broker funciona
+    // Endpoint de estado
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       status: 'online',
       clients: aedes.connectedClients,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      environment: process.env.NODE_ENV || 'development'
     }));
+  } else if (req.url === '/api/message' && req.method === 'POST') {
+    // ===== NUEVO ENDPOINT PARA ESP32 =====
+    let body = '';
+    req.on('data', chunk => {
+      body += chunk.toString();
+    });
+    
+    req.on('end', () => {
+      try {
+        console.log('📨 Mensaje recibido via API:', body);
+        
+        const data = JSON.parse(body);
+        
+        if (data.topic && data.message) {
+          // Publicar en el broker MQTT
+          aedes.publish({
+            topic: data.topic,
+            payload: data.message,
+            qos: 0,
+            retain: false
+          });
+          
+          res.writeHead(200, { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          });
+          
+          res.end(JSON.stringify({ 
+            status: 'success', 
+            message: 'Mensaje publicado en MQTT',
+            topic: data.topic,
+            received: data.message
+          }));
+          
+          console.log(`📤 Publicado en ${data.topic}: ${data.message}`);
+          
+        } else {
+          res.writeHead(400, { 
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*'
+          });
+          res.end(JSON.stringify({ 
+            status: 'error', 
+            message: 'Formato inválido. Use: {"topic":"x","message":"y"}' 
+          }));
+        }
+      } catch (error) {
+        res.writeHead(500, { 
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        });
+        res.end(JSON.stringify({ 
+          status: 'error', 
+          message: 'Error procesando JSON: ' + error.message 
+        }));
+      }
+    });
   } else {
-    res.writeHead(404);
-    res.end("Not found");
+    res.writeHead(404, { 
+      'Content-Type': 'application/json',
+      'Access-Control-Allow-Origin': '*'
+    });
+    res.end(JSON.stringify({ 
+      status: 'error', 
+      message: 'Endpoint no encontrado',
+      availableEndpoints: ['/', '/events', '/status', '/api/message'] 
+    }));
   }
 });
 
@@ -61,9 +139,10 @@ const wss = new WebSocket.Server({
   path: '/simple'  // Path especial para clientes simples
 });
 
-wss.on('connection', function connection(ws) {
+wss.on('connection', function connection(ws, req) {
   const clientId = `simple_${Math.random().toString(36).substr(2, 9)}`;
-  const msg = `📡 Cliente WebSocket simple conectado: ${clientId}`;
+  const clientIp = req.socket.remoteAddress;
+  const msg = `📡 Cliente WebSocket simple conectado: ${clientId} desde ${clientIp}`;
   console.log(msg);
   broadcastLog(msg);
 
@@ -109,11 +188,12 @@ wss.on('connection', function connection(ws) {
         });
       }
 
-      // Responder al cliente ESP32
+      // Responder al cliente
       ws.send(JSON.stringify({
         status: 'received',
         clientId: clientId,
-        message: data
+        message: data,
+        timestamp: new Date().toISOString()
       }));
 
     } catch (error) {
@@ -131,15 +211,23 @@ wss.on('connection', function connection(ws) {
   ws.send(JSON.stringify({
     status: 'connected',
     clientId: clientId,
-    message: 'Bienvenido al broker MQTT WebSocket'
+    message: 'Bienvenido al broker MQTT WebSocket',
+    endpoints: {
+      mqtt: `wss://${req.headers.host}`,
+      simple: `wss://${req.headers.host}/simple`,
+      api: `https://${req.headers.host}/api/message`
+    }
   }));
 });
 
 // ===== FUNCIONES DE LOGGING =====
 
 function broadcastLog(message) {
+  const timestamp = new Date().toISOString();
+  const logMessage = `[${timestamp}] ${message}`;
+  
   clients.forEach(client => {
-    client.write(`data: ${message}\n\n`);
+    client.write(`data: ${logMessage}\n\n`);
   });
 }
 
@@ -157,7 +245,6 @@ aedes.on('publish', (packet, client) => {
     console.log(msg);
     broadcastLog(msg);
   } else {
-    // Mensajes de sistema o de clientes simples
     const msg = `📩 Mensaje en '${packet.topic}': ${packet.payload.toString()}`;
     console.log(msg);
     broadcastLog(msg);
@@ -171,29 +258,42 @@ aedes.on('clientDisconnect', (client) => {
   broadcastLog(msg);
 });
 
-// Manejo de errores
-aedes.on('clientError', (client, err) => {
-  const msg = `❌ Error en cliente ${client.id}: ${err.message}`;
-  console.log(msg);
-  broadcastLog(msg);
-});
-
 // ===== INICIAR SERVIDOR =====
 
 server.listen(PORT, '0.0.0.0', () => {
+  const domain = process.env.RENDER_EXTERNAL_HOSTNAME || `localhost:${PORT}`;
+  
   console.log(`
 🚀 Broker MQTT WebSocket ejecutándose en puerto ${PORT}
 =======================================================
 
 🔗 Endpoints disponibles:
-- MQTT WebSocket estándar: ws://localhost:${PORT}
-- WebSocket simple (ESP32): ws://localhost:${PORT}/simple
-- Página web: http://localhost:${PORT}
-- SSE Logs: http://localhost:${PORT}/events
-- Status API: http://localhost:${PORT}/status
+- MQTT WebSocket estándar: wss://${domain}
+- WebSocket simple: wss://${domain}/simple
+- API HTTP POST: https://${domain}/api/message
+- Página web: https://${domain}
+- SSE Logs: https://${domain}/events
+- Status: https://${domain}/status
 
-📡 Esperando conexiones de clientes...
+📡 Protocolos soportados:
+1. MQTT sobre WebSocket (clientes avanzados)
+2. WebSocket simple (ESP32, mensajes de texto)
+3. HTTP POST API (ESP32, HTTPS seguro)
+
+🌐 Ambiente: ${process.env.NODE_ENV || 'development'}
+🕐 Iniciado: ${new Date().toISOString()}
+
+✅ Listo para recibir conexiones...
 `);
+});
+
+// Manejo de errores no capturados
+process.on('uncaughtException', (error) => {
+  console.error('❌ Error no capturado:', error);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('❌ Promise rechazada:', reason);
 });
 
 // Manejo de cierre graceful
