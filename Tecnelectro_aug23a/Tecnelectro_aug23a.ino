@@ -45,6 +45,8 @@
 //Constantes
 const unsigned long lectura_temperatura_intervalo = 1000;
 const unsigned long lectura_entradas_intervalo = 100;
+const unsigned long Start_stop_intervalo = 500;
+
 
 
 
@@ -155,7 +157,16 @@ void loop() {
   executed every time a new value is received from IoT Cloud.
 */
 void onStartChange()  {
-  // Add your code here to act upon Start change
+  static unsigned long lastReadTime = 0;
+  unsigned long currentTime = millis();
+  
+  if (currentTime - lastReadTime >= Start_stop_intervalo) {
+    lastReadTime = currentTime;
+
+    digitalWrite(PIN_PILOTOSTART, LOW);
+    digitalWrite(PIN_TURBINA, LOW);
+    indication_start = true;
+  }
 }
 
 /*
@@ -163,7 +174,17 @@ void onStartChange()  {
   executed every time a new value is received from IoT Cloud.
 */
 void onStopChange()  {
-  // Add your code here to act upon Stop change
+  static unsigned long lastReadTime = 0;
+  unsigned long currentTime = millis();
+  
+  if (currentTime - lastReadTime >= Start_stop_intervalo) {
+    lastReadTime = currentTime;
+
+    digitalWrite(PIN_PILOTOSTART, HIGH);
+    digitalWrite(PIN_TURBINA, HIGH);
+    indication_start = false;
+  }
+  
 }
 
 void actualTemperatura(){
@@ -184,6 +205,7 @@ void actualTemperatura(){
       //verificarErrores();
     } else {
       // Mostrar temperatura en consola
+      temperatura_grafica = tempC;
       Serial.print("Temperatura: ");
       Serial.print(tempC);
       Serial.println(" °C");
@@ -228,28 +250,47 @@ void lecturaEntradas() {
     //estado_start     = digitalRead(PIN_START);
     
     mensaje[0] = '\0';
+    
 
     if (estado_EMO == HIGH || estado_lsw == HIGH || estado_tempFalla == HIGH) {
         //estado_start = LOW;
+        indication_fault = false;
+        digitalWrite(PIN_PILOTOFALLA, HIGH);
 
         if(estado_EMO == LOW){
           snprintf(mensaje, sizeof(mensaje),
-             "(EMO) Paro de emergencia");
+            "(EMO) Paro de emergencia");
+            digitalWrite(PIN_PILOTOSTART, HIGH);
+            digitalWrite(PIN_TURBINA, HIGH);
+            digitalWrite(PIN_PILOTOFALLA, LOW);
+            indication_fault = true;
+            indication_start = false;
         }
 
         if(estado_lsw == LOW){
           snprintf(mensaje, sizeof(mensaje),
-             "(LSW) Puerta abierta");
+            "(LSW) Puerta abierta");
+            digitalWrite(PIN_PILOTOSTART, HIGH);
+            digitalWrite(PIN_TURBINA, HIGH);
+            digitalWrite(PIN_PILOTOFALLA, LOW);
+            indication_fault = true;
+            indication_start = false;
         }
 
         if(estado_tempFalla == LOW){
           snprintf(mensaje, sizeof(mensaje),
-             "Fallo de temperatura");
+            "Fallo de temperatura");
+            digitalWrite(PIN_PILOTOSTART, HIGH);
+            digitalWrite(PIN_TURBINA, HIGH);
+            digitalWrite(PIN_PILOTOFALLA, LOW);
+            indication_fault = true;
+            indication_start = false;
         }
 
         // Mostrar en HMI
         mensajesHMI(mensaje);
     }
+    
     
   }
 }
@@ -287,12 +328,12 @@ void encender() {
   if (estado_start == LOW) {
     digitalWrite(PIN_PILOTOSTART, LOW);
     digitalWrite(PIN_TURBINA, LOW);
-  } else if (estado_start == HIGH) {
+    indication_start = true;
+  } 
+  /*
+  else if (estado_start == HIGH) {
     digitalWrite(PIN_PILOTOSTART, HIGH);
     digitalWrite(PIN_TURBINA, HIGH);
   }
+  */
 }
-
-
-
-
