@@ -9,20 +9,53 @@ const PORT = process.env.PORT || 3000;
 
 let clients = []; // conexiones SSE (navegadores escuchando)
 
+
+
 // Servidor HTTP
 const server = http.createServer((req, res) => {
   // Habilitar CORS para todas las rutas
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  
+
   // Manejar preflight OPTIONS
   if (req.method === 'OPTIONS') {
     res.writeHead(200);
     res.end();
     return;
   }
-  
+
+  const publicPath = path.join(__dirname, 'public');
+
+  // Manejar archivos estáticos
+  if (req.url.match(/\.(css|js|png|jpg|jpeg|gif|svg|ico)$/i)) {
+    const filePath = path.join(publicPath, req.url);
+    const ext = path.extname(filePath);
+
+    const contentTypes = {
+      '.css': 'text/css',
+      '.js': 'application/javascript',
+      '.png': 'image/png',
+      '.jpg': 'image/jpeg',
+      '.jpeg': 'image/jpeg',
+      '.gif': 'image/gif',
+      '.svg': 'image/svg+xml'
+    };
+
+    fs.readFile(filePath, (err, data) => {
+      if (err) {
+        res.writeHead(404);
+        res.end('Archivo no encontrado');
+      } else {
+        res.writeHead(200, {
+          'Content-Type': contentTypes[ext] || 'application/octet-stream'
+        });
+        res.end(data);
+      }
+    });
+    return; // Importante: salir después de servir el archivo estático
+  }
+
   if (req.url === '/') {
     // Página HTML
     const filePath = path.join(__dirname, 'public', 'index.html');
@@ -64,13 +97,13 @@ const server = http.createServer((req, res) => {
     req.on('data', chunk => {
       body += chunk.toString();
     });
-    
+
     req.on('end', () => {
       try {
         console.log('📨 Mensaje recibido via API:', body);
-        
+
         const data = JSON.parse(body);
-        
+
         if (data.topic && data.message) {
           // Publicar en el broker MQTT
           aedes.publish({
@@ -79,51 +112,51 @@ const server = http.createServer((req, res) => {
             qos: 0,
             retain: false
           });
-          
-          res.writeHead(200, { 
+
+          res.writeHead(200, {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*'
           });
-          
-          res.end(JSON.stringify({ 
-            status: 'success', 
+
+          res.end(JSON.stringify({
+            status: 'success',
             message: 'Mensaje publicado en MQTT',
             topic: data.topic,
             received: data.message
           }));
-          
+
           console.log(`📤 Publicado en ${data.topic}: ${data.message}`);
-          
+
         } else {
-          res.writeHead(400, { 
+          res.writeHead(400, {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*'
           });
-          res.end(JSON.stringify({ 
-            status: 'error', 
-            message: 'Formato inválido. Use: {"topic":"x","message":"y"}' 
+          res.end(JSON.stringify({
+            status: 'error',
+            message: 'Formato inválido. Use: {"topic":"x","message":"y"}'
           }));
         }
       } catch (error) {
-        res.writeHead(500, { 
+        res.writeHead(500, {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*'
         });
-        res.end(JSON.stringify({ 
-          status: 'error', 
-          message: 'Error procesando JSON: ' + error.message 
+        res.end(JSON.stringify({
+          status: 'error',
+          message: 'Error procesando JSON: ' + error.message
         }));
       }
     });
   } else {
-    res.writeHead(404, { 
+    res.writeHead(404, {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*'
     });
-    res.end(JSON.stringify({ 
-      status: 'error', 
+    res.end(JSON.stringify({
+      status: 'error',
       message: 'Endpoint no encontrado',
-      availableEndpoints: ['/', '/events', '/status', '/api/message'] 
+      availableEndpoints: ['/', '/events', '/status', '/api/message']
     }));
   }
 });
@@ -134,7 +167,7 @@ const server = http.createServer((req, res) => {
 ws.createServer({ server }, aedes.handle);
 
 // 2. WEB SOCKET SIMPLE (para ESP32 y clientes básicos)
-const wss = new WebSocket.Server({ 
+const wss = new WebSocket.Server({
   server,
   path: '/simple'  // Path especial para clientes simples
 });
@@ -201,7 +234,7 @@ wss.on('connection', function connection(ws, req) {
     }
   });
 
-  ws.on('close', function() {
+  ws.on('close', function () {
     const msg = `❌ Cliente WebSocket desconectado: ${clientId}`;
     console.log(msg);
     broadcastLog(msg);
@@ -225,7 +258,7 @@ wss.on('connection', function connection(ws, req) {
 function broadcastLog(message) {
   const timestamp = new Date().toISOString();
   const logMessage = `[${timestamp}] ${message}`;
-  
+
   clients.forEach(client => {
     client.write(`data: ${logMessage}\n\n`);
   });
@@ -246,7 +279,7 @@ aedes.on('publish', (packet, client) => {
     return; // No procesar mensajes del sistema
   }
   // ===== FIN DEL FILTRO =====
-  
+
   if (client) {
     const msg = `📩 Mensaje MQTT en '${packet.topic}' por '${client.id}': ${packet.payload.toString()}`;
     console.log(msg);
@@ -269,7 +302,7 @@ aedes.on('clientDisconnect', (client) => {
 
 server.listen(PORT, '0.0.0.0', () => {
   const domain = process.env.RENDER_EXTERNAL_HOSTNAME || `localhost:${PORT}`;
-  
+
   console.log(`
 🚀 Broker MQTT WebSocket ejecutándose en puerto ${PORT}
 =======================================================
