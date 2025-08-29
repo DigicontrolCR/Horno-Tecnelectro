@@ -9,7 +9,9 @@ const PORT = process.env.PORT || 3000;
 
 let clients = []; // conexiones SSE (navegadores escuchando)
 
-
+// ===== ALMACENAMIENTO DE COMANDOS PARA ESP32 =====
+let pendingCommands = [];
+const MAX_PENDING_COMMANDS = 10;
 
 // Servidor HTTP
 const server = http.createServer((req, res) => {
@@ -22,6 +24,23 @@ const server = http.createServer((req, res) => {
   if (req.method === 'OPTIONS') {
     res.writeHead(200);
     res.end();
+    return;
+  }
+
+  // ===== NUEVO ENDPOINT PARA COMANDOS ESP32 =====
+  if (req.url === '/api/esp32-commands' && req.method === 'GET') {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Content-Type', 'text/plain');
+    
+    if (pendingCommands.length > 0) {
+      const commands = pendingCommands.join(',');
+      pendingCommands = [];
+      console.log(`📤 Enviando comandos a ESP32: ${commands}`);
+      res.end(commands);
+    } else {
+      console.log('📭 No hay comandos pendientes para ESP32');
+      res.end('no_commands');
+    }
     return;
   }
 
@@ -89,10 +108,10 @@ const server = http.createServer((req, res) => {
       status: 'online',
       clients: aedes.connectedClients,
       timestamp: new Date().toISOString(),
-      environment: process.env.NODE_ENV || 'development'
+      environment: process.env.NODE_ENV || 'development',
+      pendingCommands: pendingCommands.length
     }));
   } else if (req.url === '/api/message' && req.method === 'POST') {
-    // ===== NUEVO ENDPOINT PARA ESP32 =====
     let body = '';
     req.on('data', chunk => {
       body += chunk.toString();
@@ -105,24 +124,26 @@ const server = http.createServer((req, res) => {
         const data = JSON.parse(body);
 
         if (data.topic && data.message) {
-          // Publicar en el broker MQTT
+          // ===== ALMACENAR COMANDOS PARA ESP32 =====
+          if (data.topic === 'esp32/control' && 
+              (data.message === 'led_on' || data.message === 'led_off' || data.message === 'led_toggle')) {
+            if (pendingCommands.length < MAX_PENDING_COMMANDS) {
+              pendingCommands.push(data.message);
+              console.log(`💾 Comando almacenado: ${data.message}`);
+              console.log(`📊 Comandos pendientes: ${pendingCommands.length}`);
+            } else {
+              console.log('❌ Límite de comandos pendientes alcanzado');
+            }
+          }
+          // ===== FIN ALMACENAMIENTO =====
+
+          // Publicar en el broker MQTT (para otros clientes)
           aedes.publish({
             topic: data.topic,
             payload: data.message,
             qos: 0,
             retain: false
           });
-
-          // ===== MODIFICACIÓN: Preparar respuesta para ESP32 =====
-          let responseMessage = data.message;
-
-          // Si es un comando para ESP32, enviarlo de forma que lo detecte
-          if (data.topic === 'esp32/control' &&
-            (data.message === 'led_on' || data.message === 'led_off' || data.message === 'led_toggle')) {
-            responseMessage = `COMMAND:${data.message}`; // Prefijo especial
-            console.log(`🔧 Enviando comando ESP32: ${responseMessage}`);
-          }
-          // ===== FIN DE MODIFICACIÓN =====
 
           res.writeHead(200, {
             'Content-Type': 'application/json',
@@ -133,7 +154,8 @@ const server = http.createServer((req, res) => {
             status: 'success',
             message: 'Mensaje publicado en MQTT',
             topic: data.topic,
-            received: responseMessage // ← Usar el mensaje modificado
+            received: data.message,
+            pendingCommands: pendingCommands.length
           }));
 
           console.log(`📤 Publicado en ${data.topic}: ${data.message}`);
@@ -167,7 +189,7 @@ const server = http.createServer((req, res) => {
     res.end(JSON.stringify({
       status: 'error',
       message: 'Endpoint no encontrado',
-      availableEndpoints: ['/', '/events', '/status', '/api/message']
+      availableEndpoints: ['/', '/events', '/status', '/api/message', '/api/esp32-commands']
     }));
   }
 });
@@ -203,6 +225,19 @@ wss.on('connection', function connection(ws, req) {
         try {
           const parsed = JSON.parse(data);
           if (parsed.topic && parsed.message) {
+            // ===== ALMACENAR COMANDOS PARA ESP32 =====
+            if (parsed.topic === 'esp32/control' && 
+                (parsed.message === 'led_on' || parsed.message === 'led_off' || parsed.message === 'led_toggle')) {
+              if (pendingCommands.length < MAX_PENDING_COMMANDS) {
+                pendingCommands.push(parsed.message);
+                console.log(`💾 Comando almacenado desde WS: ${parsed.message}`);
+                console.log(`📊 Comandos pendientes: ${pendingCommands.length}`);
+              } else {
+                console.log('❌ Límite de comandos pendientes alcanzado');
+              }
+            }
+            // ===== FIN ALMACENAMIENTO =====
+            
             aedes.publish({
               topic: parsed.topic,
               payload: parsed.message,
@@ -216,6 +251,20 @@ wss.on('connection', function connection(ws, req) {
       } else if (data.includes('|')) {
         // Formato: "topico|mensaje"
         const [topic, payload] = data.split('|');
+        
+        // ===== ALMACENAR COMANDOS PARA ESP32 =====
+        if (topic.trim() === 'esp32/control' && 
+            (payload.trim() === 'led_on' || payload.trim() === 'led_off' || payload.trim() === 'led_toggle')) {
+          if (pendingCommands.length < MAX_PENDING_COMMANDS) {
+            pendingCommands.push(payload.trim());
+            console.log(`💾 Comando almacenado desde WS: ${payload.trim()}`);
+            console.log(`📊 Comandos pendientes: ${pendingCommands.length}`);
+          } else {
+            console.log('❌ Límite de comandos pendientes alcanzado');
+          }
+        }
+        // ===== FIN ALMACENAMIENTO =====
+        
         aedes.publish({
           topic: topic.trim(),
           payload: payload.trim(),
@@ -237,7 +286,8 @@ wss.on('connection', function connection(ws, req) {
         status: 'received',
         clientId: clientId,
         message: data,
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        pendingCommands: pendingCommands.length
       }));
 
     } catch (error) {
@@ -259,8 +309,10 @@ wss.on('connection', function connection(ws, req) {
     endpoints: {
       mqtt: `wss://${req.headers.host}`,
       simple: `wss://${req.headers.host}/simple`,
-      api: `https://${req.headers.host}/api/message`
-    }
+      api: `https://${req.headers.host}/api/message`,
+      commands: `https://${req.headers.host}/api/esp32-commands`
+    },
+    pendingCommands: pendingCommands.length
   }));
 });
 
@@ -282,7 +334,6 @@ aedes.on('client', (client) => {
   broadcastLog(msg);
 });
 
-// Logs de mensajes publicados
 // Logs de mensajes publicados
 aedes.on('publish', (packet, client) => {
   // ===== FILTRO: Ignorar mensajes del sistema $SYS/ =====
@@ -322,6 +373,7 @@ server.listen(PORT, '0.0.0.0', () => {
 - MQTT WebSocket estándar: wss://${domain}
 - WebSocket simple: wss://${domain}/simple
 - API HTTP POST: https://${domain}/api/message
+- API Comandos ESP32: https://${domain}/api/esp32-commands
 - Página web: https://${domain}
 - SSE Logs: https://${domain}/events
 - Status: https://${domain}/status
