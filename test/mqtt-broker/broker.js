@@ -113,6 +113,17 @@ const server = http.createServer((req, res) => {
             retain: false
           });
 
+          // ===== MODIFICACIÓN: Preparar respuesta para ESP32 =====
+          let responseMessage = data.message;
+
+          // Si es un comando para ESP32, enviarlo de forma que lo detecte
+          if (data.topic === 'esp32/control' &&
+            (data.message === 'led_on' || data.message === 'led_off' || data.message === 'led_toggle')) {
+            responseMessage = `COMMAND:${data.message}`; // Prefijo especial
+            console.log(`🔧 Enviando comando ESP32: ${responseMessage}`);
+          }
+          // ===== FIN DE MODIFICACIÓN =====
+
           res.writeHead(200, {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*'
@@ -122,7 +133,7 @@ const server = http.createServer((req, res) => {
             status: 'success',
             message: 'Mensaje publicado en MQTT',
             topic: data.topic,
-            received: data.message
+            received: responseMessage // ← Usar el mensaje modificado
           }));
 
           console.log(`📤 Publicado en ${data.topic}: ${data.message}`);
