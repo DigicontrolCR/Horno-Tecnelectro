@@ -90,6 +90,8 @@ app.get('/api/broker-status', async (req, res) => {
 // Endpoint para logs (SSE proxy) - Conectar al broker principal
 app.get('/api/events', async (req, res) => {
   try {
+    console.log('🔗 Conectando a SSE del broker...');
+    
     const response = await axios.get(`${BROKER_URL}/events`, {
       responseType: 'stream',
       timeout: 0
@@ -101,46 +103,81 @@ app.get('/api/events', async (req, res) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
 
     response.data.on('data', (chunk) => {
-      const data = chunk.toString();
-      
-      // Procesar datos del ESP32
-      if (data.includes('esp32/sensors')) {
-        processSensorData(data);
+      try {
+        const data = chunk.toString();
+        console.log('📩 Evento SSE:', data); // DEBUG
+        
+        // Procesar datos del ESP32
+        if (data.includes('esp32/sensors')) {
+          processSensorData(data);
+        }
+        
+        // Reenviar datos al cliente
+        res.write(`data: ${data}\n\n`);
+      } catch (error) {
+        console.error('Error procesando chunk SSE:', error);
       }
-      
-      // Reenviar datos al cliente
-      res.write(`data: ${data}\n\n`);
+    });
+
+    response.data.on('error', (error) => {
+      console.error('Error en stream SSE:', error);
+      res.end();
     });
 
     req.on('close', () => {
+      console.log('❌ Cliente SSE desconectado');
       response.data.destroy();
     });
 
   } catch (error) {
-    console.error('Error conectando a SSE:', error);
-    res.status(500).end();
+    console.error('❌ Error conectando a SSE:', error);
+    res.status(500).json({ error: 'Error conectando al broker' });
   }
 });
 
 // Procesar datos del sensor ESP32
 function processSensorData(eventData) {
   try {
-    const messageMatch = eventData.match(/"message": "([^"]+)"/);
-    if (messageMatch && messageMatch[1]) {
-      const message = messageMatch[1];
-      const params = new URLSearchParams(message);
+    console.log('📨 Evento recibido:', eventData); // DEBUG
+    
+    // Buscar mensajes del ESP32 en diferentes formatos
+    if (eventData.includes('esp32/sensors')) {
+      // Formato 1: Mensaje MQTT directo
+      const mqttMatch = eventData.match(/esp32\/sensors['"]?[^}]*message['"]?:\s*['"]([^'"]+)['"]/);
       
-      sensorData = {
-        fotoValue: params.get('foto') || '--',
-        ledState: params.get('led') === '1' ? 'Encendido' : 'Apagado',
-        wifiRssi: `${params.get('rssi') || '--'} dBm`,
-        lastUpdate: new Date().toLocaleTimeString()
-      };
+      // Formato 2: Log del servidor
+      const logMatch = eventData.match(/Publicado en esp32\/sensors:\s*([^\\]+)/);
+      
+      let sensorMessage = '';
+      
+      if (mqttMatch && mqttMatch[1]) {
+        sensorMessage = mqttMatch[1];
+      } else if (logMatch && logMatch[1]) {
+        sensorMessage = logMatch[1];
+      } else {
+        // Intentar extraer directamente si está en formato simple
+        const directMatch = eventData.match(/count=\d+&led=\d+&foto=\d+&rssi=-?\d+/);
+        if (directMatch) {
+          sensorMessage = directMatch[0];
+        }
+      }
+      
+      if (sensorMessage) {
+        console.log('📊 Mensaje sensor encontrado:', sensorMessage);
+        const params = new URLSearchParams(sensorMessage);
+        
+        sensorData = {
+          fotoValue: params.get('foto') || '--',
+          ledState: params.get('led') === '1' ? 'Encendido' : 'Apagado',
+          wifiRssi: `${params.get('rssi') || '--'} dBm`,
+          lastUpdate: new Date().toLocaleTimeString()
+        };
 
-      console.log('📊 Datos del sensor actualizados:', sensorData);
+        console.log('✅ Datos del sensor actualizados:', sensorData);
+      }
     }
   } catch (error) {
-    console.error('Error procesando datos del sensor:', error);
+    console.error('❌ Error procesando datos del sensor:', error);
   }
 }
 
