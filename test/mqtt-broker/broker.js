@@ -15,6 +15,9 @@ const MAX_PENDING_COMMANDS = 10;
 
 // Servidor HTTP
 const server = http.createServer((req, res) => {
+  console.log(`🌐 Solicitud recibida: ${req.method} ${req.url}`);
+  console.log(`📡 IP: ${req.socket.remoteAddress}`);
+  
   // Habilitar CORS para todas las rutas
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
@@ -22,32 +25,17 @@ const server = http.createServer((req, res) => {
 
   // Manejar preflight OPTIONS
   if (req.method === 'OPTIONS') {
+    console.log('🛬 Preflight OPTIONS recibido');
     res.writeHead(200);
     res.end();
     return;
   }
 
-  // ===== NUEVO ENDPOINT PARA COMANDOS ESP32 =====
-  if (req.url === '/api/esp32-commands' && req.method === 'GET') {
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Content-Type', 'text/plain');
-    
-    if (pendingCommands.length > 0) {
-      const commands = pendingCommands.join(',');
-      pendingCommands = [];
-      console.log(`📤 Enviando comandos a ESP32: ${commands}`);
-      res.end(commands);
-    } else {
-      console.log('📭 No hay comandos pendientes para ESP32');
-      res.end('no_commands');
-    }
-    return;
-  }
-
   const publicPath = path.join(__dirname, 'public');
 
-  // Manejar archivos estáticos
+  // Manejar archivos estáticos PRIMERO
   if (req.url.match(/\.(css|js|png|jpg|jpeg|gif|svg|ico)$/i)) {
+    console.log('📁 Sirviendo archivo estático:', req.url);
     const filePath = path.join(publicPath, req.url);
     const ext = path.extname(filePath);
 
@@ -63,23 +51,49 @@ const server = http.createServer((req, res) => {
 
     fs.readFile(filePath, (err, data) => {
       if (err) {
+        console.log('❌ Archivo no encontrado:', filePath);
         res.writeHead(404);
         res.end('Archivo no encontrado');
       } else {
+        console.log('✅ Archivo servido:', filePath);
         res.writeHead(200, {
           'Content-Type': contentTypes[ext] || 'application/octet-stream'
         });
         res.end(data);
       }
     });
-    return; // Importante: salir después de servir el archivo estático
+    return;
   }
 
+  // ===== ENDPOINT PARA COMANDOS ESP32 =====
+  if (req.url === '/api/esp32-commands' && req.method === 'GET') {
+    console.log(`🎯 GET recibido en /api/esp32-commands`);
+    console.log(`📡 Desde IP: ${req.socket.remoteAddress}`);
+    console.log(`📊 User-Agent: ${req.headers['user-agent'] || 'Desconocido'}`);
+    console.log(`💾 Comandos pendientes: ${pendingCommands.length}`);
+    
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Content-Type', 'text/plain');
+    
+    if (pendingCommands.length > 0) {
+      const commands = pendingCommands.join(',');
+      pendingCommands = [];
+      console.log(`📤 Enviando comandos a ESP32: ${commands}`);
+      res.end(commands);
+    } else {
+      console.log('📭 No hay comandos pendientes para ESP32');
+      res.end('no_commands');
+    }
+    return;
+  }
+
+  // Resto de endpoints
   if (req.url === '/') {
-    // Página HTML
+    console.log('🏠 Sirviendo página principal');
     const filePath = path.join(__dirname, 'public', 'index.html');
     fs.readFile(filePath, (err, data) => {
       if (err) {
+        console.log('❌ Error cargando index.html:', err);
         res.writeHead(500);
         res.end("Error cargando index.html");
       } else {
@@ -88,7 +102,7 @@ const server = http.createServer((req, res) => {
       }
     });
   } else if (req.url === '/events') {
-    // Endpoint SSE
+    console.log('📡 Nuevo cliente SSE conectado');
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -99,10 +113,11 @@ const server = http.createServer((req, res) => {
     clients.push(res);
 
     req.on('close', () => {
+      console.log('❌ Cliente SSE desconectado');
       clients = clients.filter(client => client !== res);
     });
   } else if (req.url === '/status') {
-    // Endpoint de estado
+    console.log('📊 Solicitud de status recibida');
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       status: 'online',
@@ -112,6 +127,7 @@ const server = http.createServer((req, res) => {
       pendingCommands: pendingCommands.length
     }));
   } else if (req.url === '/api/message' && req.method === 'POST') {
+    console.log('📨 POST recibido en /api/message');
     let body = '';
     req.on('data', chunk => {
       body += chunk.toString();
@@ -161,6 +177,7 @@ const server = http.createServer((req, res) => {
           console.log(`📤 Publicado en ${data.topic}: ${data.message}`);
 
         } else {
+          console.log('❌ Formato inválido en /api/message');
           res.writeHead(400, {
             'Content-Type': 'application/json',
             'Access-Control-Allow-Origin': '*'
@@ -171,17 +188,19 @@ const server = http.createServer((req, res) => {
           }));
         }
       } catch (error) {
+        console.log('❌ Error procesando JSON en /api/message:', error.message);
         res.writeHead(500, {
           'Content-Type': 'application/json',
           'Access-Control-Allow-Origin': '*'
         });
         res.end(JSON.stringify({
-          status: 'error',
-          message: 'Error procesando JSON: ' + error.message
+            status: 'error',
+            message: 'Error procesando JSON: ' + error.message
         }));
       }
     });
   } else {
+    console.log('❌ Endpoint no encontrado:', req.url);
     res.writeHead(404, {
       'Content-Type': 'application/json',
       'Access-Control-Allow-Origin': '*'
@@ -210,14 +229,12 @@ wss.on('connection', function connection(ws, req) {
   const clientIp = req.socket.remoteAddress;
   const msg = `📡 Cliente WebSocket simple conectado: ${clientId} desde ${clientIp}`;
   console.log(msg);
-  broadcastLog(msg);
 
   ws.on('message', function incoming(message) {
     try {
       const data = message.toString();
       const msg = `📩 Mensaje simple de ${clientId}: ${data}`;
       console.log(msg);
-      broadcastLog(msg);
 
       // Procesar diferentes formatos de mensaje
       if (data.startsWith('{')) {
@@ -298,7 +315,6 @@ wss.on('connection', function connection(ws, req) {
   ws.on('close', function () {
     const msg = `❌ Cliente WebSocket desconectado: ${clientId}`;
     console.log(msg);
-    broadcastLog(msg);
   });
 
   // Enviar mensaje de bienvenida
