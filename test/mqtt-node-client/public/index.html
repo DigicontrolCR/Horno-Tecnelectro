@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Control Horno Tecnelectro</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>🏭 Control Horno Tecnelectro</h1>
+      <p>Control remoto del ESP32</p>
+    </header>
+
+    <!-- Panel de Control LED -->
+    <div class="control-panel">
+      <h2>💡 Control LED</h2>
+      <div class="switch-container">
+        <label class="switch">
+          <input type="checkbox" id="ledSwitch" onchange="toggleLED()">
+          <span class="slider"></span>
+        </label>
+        <span id="ledStatus" class="status-text">Apagado</span>
+      </div>
+      <div class="button-group">
+        <button onclick="sendCommand('led_on')" class="btn btn-success" data-command="led_on">🔆 Encender</button>
+<button onclick="sendCommand('led_off')" class="btn btn-danger" data-command="led_off">⚫ Apagar</button>
+      </div>
+    </div>
+
+    <!-- Panel de Sensores -->
+    <div class="sensor-panel">
+      <h2>📊 Datos del Sensor</h2>
+      <div class="sensor-data">
+        <div class="data-item">
+          <span class="label">📷 Fotorresistencia:</span>
+          <span id="fotoValue" class="value">--</span>
+        </div>
+        <div class="data-item">
+          <span class="label">💡 Estado LED:</span>
+          <span id="ledState" class="value">--</span>
+        </div>
+        <div class="data-item">
+          <span class="label">📶 Señal WiFi:</span>
+          <span id="wifiRssi" class="value">--</span>
+        </div>
+        <div class="data-item">
+          <span class="label">🕐 Última actualización:</span>
+          <span id="lastUpdate" class="value">--</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Estado de Conexión -->
+    <div class="connection-status">
+      <span id="connectionStatus" class="status-offline">🔴 Desconectado</span>
+      <span id="brokerStatus">Broker: Desconectado</span>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
